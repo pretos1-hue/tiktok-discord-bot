@@ -1,41 +1,37 @@
-# TikTok → Discord Bot (kostenlos, via GitHub Actions)
+name: TikTok zu Discord
 
-Postet automatisch ein neues TikTok-Video von **@pretos_real** in deinen
-Discord-Kanal `#Social-Media`. Läuft komplett kostenlos auf GitHub Actions,
-kein eigener Server nötig.
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # alle 15 Minuten
+  workflow_dispatch:          # manueller Test-Button in GitHub
 
-## Einrichtung
+permissions:
+  contents: write            # damit der Workflow last_tiktok_id.txt committen darf
 
-1. **Neues Repository auf GitHub anlegen** (kann privat sein).
-2. Diese drei Dateien in das Repo hochladen, mit genau dieser Struktur:
-   ```
-   check_tiktok.py
-   .github/workflows/tiktok-discord.yml
-   README.md
-   ```
-3. **Secret hinterlegen:** Repo → Settings → Secrets and variables → Actions
-   → "New repository secret"
-   - Name: `DISCORD_WEBHOOK_URL`
-   - Wert: die Webhook-URL deines `#Social-Media`-Kanals (aus Discord →
-     Kanal bearbeiten → Integrationen → Webhooks)
-4. **Schreibrechte für Actions aktivieren:** Repo → Settings → Actions →
-   General → "Workflow permissions" → **"Read and write permissions"**
-   auswählen und speichern. (Nötig, damit der Bot `last_tiktok_id.txt`
-   zurück ins Repo schreiben darf.)
-5. Fertig. Der Workflow läuft ab jetzt automatisch alle 15 Minuten.
-   Zum sofortigen Testen: Reiter "Actions" → "TikTok zu Discord" →
-   "Run workflow".
+jobs:
+  check-tiktok:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
 
-## Wichtig zu wissen
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-- **Nicht 100 % narrensicher:** TikTok blockt gelegentlich automatisierte
-  Anfragen von Cloud-IPs (wie denen von GitHub Actions) oder ändert sein
-  Seitenlayout. Wenn der Bot plötzlich nichts mehr postet, im Actions-Log
-  nachsehen — meist reicht eine kleine Anpassung im Skript.
-- **Erster Lauf:** Beim allerersten Durchlauf gibt es noch keine
-  `last_tiktok_id.txt` — dein aktuell neuestes Video wird dann einmalig
-  gepostet. Das ist normal.
-- Nach 60 Tagen ohne Repo-Aktivität deaktiviert GitHub geplante Workflows
-  automatisch. Falls das passiert: Actions-Tab → Workflow wieder aktivieren.
-- Username ändern: einfach `TIKTOK_USERNAME` oben in `check_tiktok.py`
-  anpassen.
+      - name: Abhängigkeiten installieren
+        run: pip install requests
+
+      - name: TikTok prüfen und ggf. nach Discord posten
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python check_tiktok.py
+
+      - name: Status zurück ins Repo committen
+        run: |
+          git config user.name "tiktok-bot"
+          git config user.email "actions@github.com"
+          git add last_tiktok_id.txt
+          git diff --staged --quiet || git commit -m "Update letzte TikTok-Video-ID"
+          git push
